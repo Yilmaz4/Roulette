@@ -1,6 +1,6 @@
 __title__ = "Roulette"
 __version__ = "1.0.0"
-__credits__ = ["Yilmaz Alpaslan", "Leonard Jünkt"]
+__credits__ = ["Yilmaz", "Leonard"]
 
 import math, random
 try:
@@ -131,16 +131,19 @@ class Roulette:
 
     first_frame = True # Used to re-adjust the window size for DPI scaling in Linux, probably not needed in Windows
 
+    last_bet_place_timestamp = 0 # Used for adding bets while holding down the mouse button
+
     game_over_timestamp = 0 # Used to fade in the end screen
 
     win_timestamp = -1500 # Used to fade out the win screen
     lose_timestamp = -1000 # Used to make the text red when money is lost
 
-    bets: dict[str, int] = {}
-    bank_account = 1000
-    highscore = 0
-    _xp = 0
-    _xp_target = 0
+    bets: dict[str, int] = {} # Stores the amount of money bet on each position on the board
+    bank_account = 1000 # Amount of money player has
+    highscore = 0 # High-score, only saved when the player quits the game, and half of it becomes the starting bank account when the game loads next time
+    
+    _xp = 0 # Current XP
+    _xp_interpolate = 0 # The amount of XP displayed on the XP bar, used for animating the bar when XP increases
 
     def __init__(self):
         pygame.init()
@@ -148,8 +151,8 @@ class Roulette:
 
         self.clock = pygame.time.Clock()
 
-        self.screen = pygame.display.set_mode([1000, 360], 0, 32)
-        pygame.display.set_caption("Roulette")
+        self.screen = pygame.display.set_mode([1000, 360], 0, 32) # 1000 pixels wide, 360 pixels tall, no flags, 32 bits    
+        pygame.display.set_caption("Roulette") # Set window title
 
         self.font = pygame.font.Font(None, 30)
 
@@ -221,33 +224,34 @@ class Roulette:
         if self.highscore // 2 > self.bank_account:
             self.bank_account = self.highscore // 2
 
-    # Getter and setter methods for the XP
+    # Getter method for XP, returns the time-interpolated value in order to animate the XP bar when the XP increases
     @property
     def xp(self):
         t = max(0.0, min(1.0, (pygame.time.get_ticks() - self.win_timestamp) / 2500))
         if (t == 1.0):
-            self._xp = self._xp_target
-            return self._xp
-        return self._xp + (self._xp_target - self._xp) * (1 - (1 - t) ** 3)
+            self._xp_interpolate = self._xp
+            return self._xp_interpolate
+        return self._xp_interpolate + (self._xp - self._xp_interpolate) * (1 - (1 - t) ** 3)
+    # Setter method for XP
     @xp.setter
     def xp(self, val):
-        self._xp_target = val
+        self._xp = val
 
     # Getter method for the level of the player based on xp
     @property
     def level(self):
         return int(self.xp // 1076)
 
-    # Getter method for the percent of bonus added to each win based on level
+    # Getter method for the percent of bonus added to each net-profit based on level
     @property
     def bonus_percent(self):
         return int((self.level * 10) ** (1 / 5) * 10)
 
-    # Static method for rendering an image rotated around its center
+    # Static method for rendering an image rotated around its center, credit: https://stackoverflow.com/a/54714144 (modified)
     @staticmethod
-    def blitRotateCenter(surf, image, topleft, angle):
-        rotated_image = pygame.transform.rotate(image, -angle * 180 / math.pi)
-        new_rect = rotated_image.get_rect(center = image.get_rect(topleft = topleft).center)
+    def blitRotateCenter(surf: pygame.Surface, image: pygame.Surface, topleft: tuple[int, int], angle: float):
+        rotated_image = pygame.transform.rotozoom(image, -math.degrees(angle), 1.0)
+        new_rect = rotated_image.get_rect(center=image.get_rect(topleft=topleft).center)
 
         surf.blit(rotated_image, new_rect)
 
@@ -266,6 +270,7 @@ class Roulette:
     def interpolateColor(a: list[int], b: list[int], t: float):
         return [max(min(int(x + (y - x) * t), 255), 0) for x, y in zip(a, b)]
     
+    # Writes the high-score to a file in AppData and returns the value
     def storeHighscore(self):
         data_dir = pathlib.Path(platformdirs.user_data_dir("Roulette"))
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -277,14 +282,45 @@ class Roulette:
         if self.bank_account > highscore:
             file.write_text(str(self.bank_account))
         return int(max(self.bank_account, highscore))
+    
+    def getClosestBet(self, pos: tuple[int, int]):
+        closest_bet = ""
+        min_dist = float("inf")
+        for bet, coord in coords.items():
+            dist = math.dist(pos, coord);
+            if dist < min_dist:
+                closest_bet = bet
+                min_dist = dist
+        return closest_bet
+    
+    # Add money on the specified bet
+    def addBet(self, bet: str):
+        amount_to_add = 10 # Default bet amount
+        amount_max = self.bank_account - sum(self.bets.values()) # The money we have left to bet with
+
+        if bet not in self.bets: # The dictionary is empty by default so we need to create the key-value pair first
+            self.bets[bet] = 0
+        if self.bets[bet] > 10: # If there's already bets for this bet
+            amount_to_add = 10 ** math.floor(math.log10(self.bets[bet])) # Exponential increase
+        if amount_to_add > amount_max: # If it exceeds the total money left
+            amount_to_add = amount_max
+        if amount_to_add == 0: # If player has no money left to bet with
+            return
+        
+        self.bets[bet] += amount_to_add
+        if amount_to_add == amount_max:
+            self.place_all_sound.play() # Special sound effect for going all-in
+        else:
+            random.choice(self.place_bet_sounds).play()
 
     # Method for processing the outcome of the game
     def processBets(self, now: int):
         prev_amount = self.bank_account
 
-        self.bank_account -= sum(self.bets.values())
+        self.bank_account -= sum(self.bets.values()) # Subtract the amount bet from the bank account
         amount_won = 0
 
+        # Check all bets and add the winnings to the amount_won variable
         for bet, amount in self.bets.items():
             if bet.isdigit() and int(bet) == self.ball_on_number:
                 amount_won += 36 * amount
@@ -323,9 +359,10 @@ class Roulette:
         
         self.bets.clear()
         
-        self.bank_account += amount_won
+        self.bank_account += amount_won # Add the winnings to the bank account
 
         if self.bank_account > prev_amount: # If there's a net profit
+            # We only add the bonus to the net profit to prevent farming bonus by betting the same amount to contradictory bets
             self.bank_account += (self.bank_account - prev_amount) * self.bonus_percent // 100
             self.xp += self.bank_account - prev_amount
             
@@ -333,7 +370,7 @@ class Roulette:
             self.win_timestamp = now
             self.win_screen = random.choice(self.win_screens)
             
-        elif self.bank_account < prev_amount:
+        elif self.bank_account < prev_amount: # If there's a net loss
             self.lose_timestamp = now
 
     # Method for processing window events such as quitting or pressing mouse buttons
@@ -345,11 +382,12 @@ class Roulette:
                     return
                 if self.bank_account == 0: # Ignore if the game is about to end
                     return
-                if self.quit_counter != 3: # Ignore if the user hasn't tried 3 times yet
+                if self.quit_counter != 3: # Ignore if the user hasn't pressed quit 3 times yet
                     self.quit_counter += 1
                     return
                 
-                self.storeHighscore()
+                self.storeHighscore() # Only store the high-score if the player willingly quits the game
+
                 pygame.quit()
                 raise SystemExit
             
@@ -363,34 +401,14 @@ class Roulette:
                 
                 # Did the user click within the bets area
                 if top_left_corner[0] <= event.pos[0] <= bottom_right_corner[0] and top_left_corner[1] <= event.pos[1] <= bottom_right_corner[1]:
-                    closest_bet = ""
-                    closest_dist = float("inf")
-                    for bet, coord in coords.items():
-                        dist = math.dist(event.pos, coord);
-                        if dist < closest_dist:
-                            closest_bet = bet
-                            closest_dist = dist
+                    closest_bet = self.getClosestBet(event.pos)
+ 
+                    if event.button == 1: # Left mouse button clicked
+                        self.addBet(closest_bet)
+                        self.last_bet_place_timestamp = now + 500
 
-                    if closest_bet not in self.bets: # The dictionary is empty by default so we need to create the key-value pair first
-                        self.bets[closest_bet] = 0
-                        
-                    if event.button == 1: # Left mouse button
-                        amount_to_add = 10
-                        amount_max = self.bank_account - sum(self.bets.values()) # The money we have left to bet with
-                        if self.bets[closest_bet] > 10:
-                            amount_to_add = 10 ** math.floor(math.log10(self.bets[closest_bet])) # Exponential increase
-                        if amount_to_add > amount_max:
-                            amount_to_add = amount_max
-                        if amount_to_add == 0:
-                            return
-                        self.bets[closest_bet] += amount_to_add
-                        if amount_to_add == amount_max:
-                            self.place_all_sound.play()
-                        else:
-                            random.choice(self.place_bet_sounds).play()
-
-                    if event.button == 3: # Right mouse button
-                        self.bets[closest_bet] = 0
+                    elif event.button == 3: # Right mouse button clicked
+                        self.bets[closest_bet] = 0 # Remove all bets from this bet
 
                 # Did the user click on the middle of the wheel
                 elif math.dist(event.pos, wheel_center) < 15:
@@ -402,21 +420,29 @@ class Roulette:
                         self.ball_distance = 135
                         self.ball_on_number = -1
                         self.ball_num_bounces = 0
+
                         self.wheel_rotate_sound.play()
                     else:
-                        random.choice(self.place_bets_please_sounds).play()
+                        random.choice(self.place_bets_please_sounds).play() # Some woman saying "place your bets please"
+
+        if pygame.mouse.get_pressed()[0]:
+            mouse_pos = pygame.mouse.get_pos()
+            if now - self.last_bet_place_timestamp > 100 and top_left_corner[0] <= mouse_pos[0] <= bottom_right_corner[0] and top_left_corner[1] <= mouse_pos[1] <= bottom_right_corner[1]:
+                closest_bet = self.getClosestBet(mouse_pos)
+                self.addBet(closest_bet)
+                self.last_bet_place_timestamp = now
 
     # Method for making things move and generating the outcome of each run
     def processPhysics(self, now: int):
         self.wheel_rotation_angle += self.wheel_rotation_speed
-        self.wheel_rotation_speed /= 1.006
+        self.wheel_rotation_speed /= 1.006 # Wheel slows down due to friction
 
         if self.wheel_rotation_speed != 0 and self.wheel_rotation_speed < 0.002: # Has the wheel come to a stop?
             self.wheel_rotation_speed = 0.0
             self.processBets(now)
 
         self.ball_rotation_angle += self.ball_rotation_speed
-        self.ball_rotation_speed /= 1.01
+        self.ball_rotation_speed /= 1.01 # Ball slows down due to friction
         
         if self.ball_rotation_speed != 0:
             if self.ball_distance <= 76.0: # Wait for the ball to fall towards the wheel
@@ -555,13 +581,13 @@ class Roulette:
                         pygame.quit()
                         raise SystemExit
                 
-            pygame.display.update()
+            pygame.display.update() # Updates the contents of the window
 
             self.clock.tick(60) # Lock the game to 60 FPS
 
             if self.first_frame: # Fixes scaling issues in Linux Wayland, probably not needed on Windows
                 window = Window.from_display_module()
-                self.screen = pygame.display.set_mode([1000 * 1000 / window.size[0], 360 * 360 / window.size[1]], pygame.SHOWN, 32) # type: ignore
+                self.screen = pygame.display.set_mode([1000 * 1000 / window.size[0], 360 * 360 / window.size[1]], pygame.SHOWN, 32) # type: ignore # ignores type error in vscode
                 self.first_frame = False
 
 game = Roulette()
