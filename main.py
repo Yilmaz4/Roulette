@@ -10,8 +10,13 @@ __title__ = "Roulette"
 __version__ = "1.0.0"
 __credits__ = ["Yilmaz", "Leonard"]
 
+# Fix scaling issues under Wayland, not relevant for Windows
+import os
+if os.environ.get("XDG_SESSION_TYPE") == "wayland" or "WAYLAND_DISPLAY" in os.environ:
+    os.environ["SDL_VIDEODRIVER"] = "wayland"
+    os.environ["SDL_VIDEO_WAYLAND_SCALE_TO_DISPLAY"] = "1"
+
 import math, random, asyncio,shadows, pygame, pathlib, platformdirs
-from pygame._sdl2.video import Window
 
 # Click spots for each bet
 coords = {
@@ -130,8 +135,6 @@ class Roulette:
 
     quit_counter = 0  # Increments every time user tries to quit, only exits when == 3
     quit_timestamp = -500  # Used to fade out the cat png when user tries to quit while the wheel is spinning
-
-    first_frame = True  # Used to re-adjust the window size for DPI scaling in Linux, probably not needed in Windows
 
     last_bet_place_timestamp = 0  # Used for adding bets while holding down the mouse button
 
@@ -622,11 +625,6 @@ class Roulette:
             self.clock.tick(60)  # Lock the game to 60 FPS
 
             await asyncio.sleep(0)  # Required for pygbag
-
-            if self.first_frame:  # Fixes scaling issues in Linux Wayland, probably not needed on Windows
-                window = Window.from_display_module()
-                self.screen = pygame.display.set_mode([1000 * 1000 / window.size[0], 360 * 360 / window.size[1]], pygame.SHOWN, 32)  # type: ignore # ignores type error in vscode
-                self.first_frame = False
 
 
 async def main():
