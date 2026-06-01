@@ -1,17 +1,16 @@
+# /// script
+# dependencies = [
+#  "numpy",
+#  "pathlib",
+#  "platformdirs",
+# ]
+# ///
+
 __title__ = "Roulette"
 __version__ = "1.0.0"
 __credits__ = ["Yilmaz", "Leonard"]
 
-import math, random, asyncio
-
-try:
-    import shadows, pygame, pathlib, platformdirs
-except:
-    import os
-
-    os.system("pip install pygame pathlib platformdirs numpy")
-    print("Required libraries have been installed. Restart Python to use the application!")
-    raise SystemExit
+import math, random, asyncio,shadows, pygame, pathlib, platformdirs
 from pygame._sdl2.video import Window
 
 # Click spots for each bet
@@ -187,39 +186,39 @@ class Roulette:
         self.win_screen = self.win_screens[0]
 
         self.ambient_music = pygame.mixer.music.load(
-            random.choice(["assets/sounds/ambient-pygbag.ogg", "assets/sounds/ambient2-pygbag.ogg"])
+            random.choice(["assets/sounds/ambient.mp3", "assets/sounds/ambient2.mp3"])
         )
         pygame.mixer.music.play()
         pygame.mixer.music.set_volume(0.2)
 
         self.place_bet_sounds = [
-            pygame.mixer.Sound("assets/sounds/place1-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/place2-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/place3-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/place4-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/place5-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/place6-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/place7-pygbag.ogg"),
+            pygame.mixer.Sound("assets/sounds/place1.mp3"),
+            pygame.mixer.Sound("assets/sounds/place2.mp3"),
+            pygame.mixer.Sound("assets/sounds/place3.mp3"),
+            pygame.mixer.Sound("assets/sounds/place4.mp3"),
+            pygame.mixer.Sound("assets/sounds/place5.mp3"),
+            pygame.mixer.Sound("assets/sounds/place6.mp3"),
+            pygame.mixer.Sound("assets/sounds/place7.mp3"),
         ]
-        self.place_all_sound = pygame.mixer.Sound("assets/sounds/place_all-pygbag.ogg")
+        self.place_all_sound = pygame.mixer.Sound("assets/sounds/place_all.mp3")
         self.place_bets_please_sounds = [
-            pygame.mixer.Sound("assets/sounds/please1-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/please2-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/please3-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/please4-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/please5-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/please6-pygbag.ogg"),
+            pygame.mixer.Sound("assets/sounds/please1.mp3"),
+            pygame.mixer.Sound("assets/sounds/please2.mp3"),
+            pygame.mixer.Sound("assets/sounds/please3.mp3"),
+            pygame.mixer.Sound("assets/sounds/please4.mp3"),
+            pygame.mixer.Sound("assets/sounds/please5.mp3"),
+            pygame.mixer.Sound("assets/sounds/please6.mp3"),
         ]
-        self.wheel_rotate_sound = pygame.mixer.Sound("assets/sounds/wheel-pygbag.ogg")
+        self.wheel_rotate_sound = pygame.mixer.Sound("assets/sounds/wheel.mp3")
 
         self.ball_bounce_sounds = [
-            pygame.mixer.Sound("assets/sounds/bounce-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/bounce2-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/bounce3-pygbag.ogg"),
-            pygame.mixer.Sound("assets/sounds/bounce4-pygbag.ogg"),
+            pygame.mixer.Sound("assets/sounds/bounce.mp3"),
+            pygame.mixer.Sound("assets/sounds/bounce2.mp3"),
+            pygame.mixer.Sound("assets/sounds/bounce3.mp3"),
+            pygame.mixer.Sound("assets/sounds/bounce4.mp3"),
         ]
-        self.ball_land_sound = pygame.mixer.Sound("assets/sounds/ball_land-pygbag.ogg")
-        self.win_sound = pygame.mixer.Sound("assets/sounds/win-pygbag.ogg")
+        self.ball_land_sound = pygame.mixer.Sound("assets/sounds/ball_land.mp3")
+        self.win_sound = pygame.mixer.Sound("assets/sounds/win.mp3")
 
         for s in self.place_bet_sounds:
             s.set_volume(0.3)
@@ -620,7 +619,7 @@ class Roulette:
 
             pygame.display.update()  # Updates the contents of the window
 
-            # self.clock.tick(60)  # Lock the game to 60 FPS
+            self.clock.tick(60)  # Lock the game to 60 FPS
 
             await asyncio.sleep(0)  # Required for pygbag
 
