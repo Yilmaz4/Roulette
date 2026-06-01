@@ -16,7 +16,7 @@ if os.environ.get("XDG_SESSION_TYPE") == "wayland" or "WAYLAND_DISPLAY" in os.en
     os.environ["SDL_VIDEODRIVER"] = "wayland"
     os.environ["SDL_VIDEO_WAYLAND_SCALE_TO_DISPLAY"] = "1"
 
-import math, random, asyncio,shadows, pygame, pathlib, platformdirs
+import math, random, asyncio, shadows, pygame, pathlib, platformdirs
 
 # Click spots for each bet
 coords = {
