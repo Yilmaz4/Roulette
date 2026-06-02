@@ -401,20 +401,19 @@ class Roulette:
 
                 pygame.quit()
                 raise SystemExit
+            
+            if self.wheel_rotation_speed != 0.0:  # No interaction while the wheel is spinning
+                return
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if self.quit_counter > 0:
                     self.quit_counter = 0  # Disable the quit screen and go back to the game
                     return
 
-                if self.wheel_rotation_speed != 0.0:  # No interaction while the wheel is spinning
-                    return
-
-                # Did the user click within the bets area
                 if (
                     top_left_corner[0] <= event.pos[0] <= bottom_right_corner[0]
                     and top_left_corner[1] <= event.pos[1] <= bottom_right_corner[1]
-                ):
+                ):  # Did the user click within the bets area
                     closest_bet = self.getClosestBet(event.pos)
 
                     if event.button == 1:  # Left mouse button clicked
@@ -439,12 +438,13 @@ class Roulette:
                     else:
                         random.choice(self.place_bets_please_sounds).play()  # Some woman saying "place your bets please"
 
-        if pygame.mouse.get_pressed()[0]:
+        if pygame.mouse.get_pressed()[0]:  # Is LMB being held down
             mouse_pos = pygame.mouse.get_pos()
             if (
-                now - self.last_bet_place_timestamp > 100
+                now - self.last_bet_place_timestamp > 100  # 100ms repeat delay
                 and top_left_corner[0] <= mouse_pos[0] <= bottom_right_corner[0]
                 and top_left_corner[1] <= mouse_pos[1] <= bottom_right_corner[1]
+                and self.wheel_rotation_speed == 0.0  # Wheel is stopped
             ):
                 closest_bet = self.getClosestBet(mouse_pos)
                 self.addBet(closest_bet)
@@ -476,9 +476,7 @@ class Roulette:
                     self.ball_bounce_timestamp = now
                     return
 
-                if (
-                    abs(self.ball_rotation_speed - self.wheel_rotation_speed) > 0.01
-                ):  # Only let the ball land on a number once it's slow enough
+                if abs(self.ball_rotation_speed - self.wheel_rotation_speed) > 0.01:  # Only let the ball land on a number once it's slow enough
                     return
 
                 # Calculate the coordinates of the ball
@@ -499,10 +497,8 @@ class Roulette:
                         smallest_dist = dist
                         closest_num = num
 
-                delta_angle = self.angleDifference(
-                    self.ball_rotation_angle, self.wheel_rotation_angle - math.pi / 2 + (angles[closest_num] * math.pi / 180)
-                )
-                if delta_angle < 0.005:  # Only accept if the angle difference is small enough to make it look smooth
+                delta_angle = self.angleDifference(self.ball_rotation_angle, self.wheel_rotation_angle - math.pi / 2 + (angles[closest_num] * math.pi / 180) )
+                if delta_angle < 0.005:  # Is the ball close enough to the center of the number?
                     self.ball_on_number = closest_num
                     self.ball_rotation_speed = 0
                     self.ball_land_sound.play()
