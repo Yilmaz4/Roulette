@@ -10,13 +10,15 @@ __title__ = "Roulette"
 __version__ = "1.0.0"
 __credits__ = ["Yilmaz", "Leonard"]
 
-# Behebt Skalierungsprobleme unter Wayland, für Windows nicht relevant
 import os
+
+# Behebt Skalierungsprobleme unter Wayland, für Windows nicht relevant
 if os.environ.get("XDG_SESSION_TYPE") == "wayland" or "WAYLAND_DISPLAY" in os.environ:
     os.environ["SDL_VIDEODRIVER"] = "wayland"
     os.environ["SDL_VIDEO_WAYLAND_SCALE_TO_DISPLAY"] = "1"
 
-import math, random, asyncio, shadows, pygame, pathlib, platformdirs
+import math, random, asyncio, shadows, pygame, pathlib, platformdirs, sys
+
 
 # Klickpositionen für jeden Einsatz
 coords = {
@@ -106,9 +108,9 @@ angles = {
     9: 261.9,
     22: 271.6,
     18: 281.3,
-    29: 290.0,
+    29: 291.5,
     7: 300.7,
-    28: 310.4,
+    28: 311,
     12: 320.1,
     35: 329.8,
     3: 339.5,
@@ -119,7 +121,6 @@ top_left_corner = (341, 44)  # Obere linke Ecke des anklickbaren Bereichs zum Pl
 bottom_right_corner = (880, 314)  # Untere rechte Ecke des anklickbaren Bereichs zum Platzieren von Einsätzen
 
 wheel_center = (171, 180)  # Mittelpunkt des Roulettekessels
-
 
 # Wir verwenden eine Klasse statt alles im globalen Namensraum abzulegen,
 # damit wir nicht in jeder Funktion für jede Variable das Schlüsselwort "global" verwenden müssen
@@ -133,6 +134,10 @@ class Roulette:
     ball_on_number = -1  # Die Zahl, auf die die Kugel gefallen ist; -1 wenn sie noch rollt
     ball_num_bounces = 0  # Anzahl der bisherigen Abpraller der Kugel
     ball_bounce_timestamp = 0  # Zeitpunkt des letzten Abprallers
+
+    in_progress = False
+
+    prev_timestamp = 0
 
     quit_counter = 0  # Wird erhöht, wenn der Nutzer versucht zu beenden; beendet erst bei == 3
     quit_timestamp = -500  # Wird verwendet, um das Katzenbild auszublenden, wenn während des Drehens beendet werden soll
@@ -170,6 +175,7 @@ class Roulette:
         self.quit_screen_2_png = pygame.image.load("assets/screens/quit2.png")
         self.quit_screen_3_png = pygame.image.load("assets/screens/quit3.png")
         self.quit_during_game_screen_png = pygame.image.load("assets/screens/quit-during-game.png")
+        self.quit_button_png = pygame.image.load("assets/quit-icon.png")
 
         pygame.display.set_icon(self.ball_png)  # Fenster-Icon festlegen
 
@@ -236,6 +242,21 @@ class Roulette:
         if self.highscore // 2 > self.bank_account:
             self.bank_account = self.highscore // 2
 
+    def quit(self, now: int):
+        if self.in_progress:  # Ignorieren, wenn sich das Rad dreht
+            self.quit_timestamp = now
+            return
+        if self.bank_account == 0:  # Ignorieren, wenn das Spiel gleich endet
+            return
+        if self.quit_counter != 3:  # Ignorieren, solange nicht 3-mal beendet wurde
+            self.quit_counter += 1
+            return
+
+        self.storeHighscore()  # Höchststand nur speichern, wenn der Spieler freiwillig beendet
+
+        pygame.quit()
+        raise SystemExit
+
     # Getter-Methode für XP; gibt einen zeitlich interpolierten Wert zurück,
     # um die XP-Leiste beim XP-Anstieg zu animieren
     @property
@@ -261,7 +282,7 @@ class Roulette:
     def bonus_percent(self):
         return int((self.level * 10) ** (1 / 5) * 10)
 
-    # Statische Methode zum Rendern eines Bildes, das um seinen Mittelpunkt rotiert wird,
+    # Statische Methode zum Rendern eines Bildes, das um seinen Mittelpunkt rotiert wird
     # Quelle: https://stackoverflow.com/a/54714144 (modifiziert)
     @staticmethod
     def blitRotateCenter(surf: pygame.Surface, image: pygame.Surface, topleft: list[int], angle: float):
@@ -288,15 +309,25 @@ class Roulette:
 
     # Schreibt den Höchststand in eine Datei im AppData-Verzeichnis und gibt den Wert zurück
     def storeHighscore(self):
-        data_dir = pathlib.Path(platformdirs.user_data_dir("Roulette"))
-        data_dir.mkdir(parents=True, exist_ok=True)
-        file = data_dir / "highscore.txt"
-
         highscore = 0
-        if file.exists():
-            highscore = int(file.read_text().strip())
-        if self.bank_account > highscore:
-            file.write_text(str(self.bank_account))
+
+        if sys.platform == "emscripten":
+            import platform
+            saved_data = platform.window.localStorage.getItem("roulette_highscore")
+            if saved_data is not None:
+                highscore = int(saved_data)
+            if self.bank_account > highscore:
+                platform.window.localStorage.setItem("roulette_highscore", str(self.bank_account))
+        else:
+            data_dir = pathlib.Path(platformdirs.user_data_dir("Roulette"))
+            data_dir.mkdir(parents=True, exist_ok=True)
+            file = data_dir / "highscore.txt"
+
+            if file.exists():
+                highscore = int(file.read_text().strip())
+            if self.bank_account > highscore:
+                file.write_text(str(self.bank_account))
+
         return int(max(self.bank_account, highscore))
 
     def getClosestBet(self, pos: tuple[int, int]):
@@ -393,26 +424,18 @@ class Roulette:
     def processEvents(self, now: int):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                if self.wheel_rotation_speed != 0:  # Ignorieren, wenn sich das Rad dreht
-                    self.quit_timestamp = now
-                    return
-                if self.bank_account == 0:  # Ignorieren, wenn das Spiel gleich endet
-                    return
-                if self.quit_counter != 3:  # Ignorieren, solange nicht 3-mal beendet wurde
-                    self.quit_counter += 1
-                    return
-
-                self.storeHighscore()  # Höchststand nur speichern, wenn der Spieler freiwillig beendet
-
-                pygame.quit()
-                raise SystemExit
-            
-            if self.wheel_rotation_speed != 0.0:  # Keine Interaktion während der Drehung
-                return
+                self.quit(now)
 
             if event.type == pygame.MOUSEBUTTONDOWN:
+                if math.dist(event.pos, [30, 30]) < 20:
+                    self.quit(now)
+                    return
+
                 if self.quit_counter > 0:
                     self.quit_counter = 0  # Disable the quit screen and go back to the game
+                    return
+                
+                if self.in_progress:  # Keine Interaktion während der Drehung
                     return
 
                 if (
@@ -428,20 +451,24 @@ class Roulette:
                     elif event.button == 3:  # Rechte Maustaste
                         self.bets[closest_bet] = 0  # Alle Einsätze auf diesem Feld entfernen
 
-                # Hat der Nutzer auf die Mitte des Kessels geklickt?
-                elif math.dist(event.pos, wheel_center) < 15:
-                    if sum(self.bets.values()):  # Hat der Nutzer bereits Einsätze platziert?
-                        # Alle Parameter zurücksetzen, das Rad starten und die Kugel rollen lassen
-                        self.wheel_rotation_speed = random.uniform(0.2, 0.3)
-                        self.ball_rotation_speed = -random.uniform(0.4, 0.5)
+                if math.dist(event.pos, wheel_center) < 15:
+                    if sum(self.bets.values()) == 0:
+                        random.choice(self.place_bets_please_sounds).play()  # Eine Stimme sagt "place your bets please"
+                    elif self.ball_distance != 135:
+                        self.ball_rotation_speed = 0.0
                         self.ball_rotation_angle = 0.0
                         self.ball_distance = 135
                         self.ball_on_number = -1
-                        self.ball_num_bounces = 0
+                        self.ball_land_sound.play()
 
-                        self.wheel_rotate_sound.play()
-                    else:
-                        random.choice(self.place_bets_please_sounds).play()  # Eine Stimme sagt "place your bets please"
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if not self.in_progress and math.dist(event.pos, wheel_center) < 15 and self.wheel_rotation_speed > 0.2:
+                    # Alle Parameter zurücksetzen, das Rad starten und die Kugel rollen lassen
+                    self.in_progress = True
+                    self.ball_rotation_speed = -random.uniform(0.4, 0.5)
+                    self.ball_num_bounces = 0
+                    self.wheel_rotate_sound.play()
+                    self.ball_land_sound.play()
 
         if pygame.mouse.get_pressed()[0]:  # Ist die linke Maustaste gedrückt gehalten
             mouse_pos = pygame.mouse.get_pos()
@@ -449,33 +476,45 @@ class Roulette:
                 now - self.last_bet_place_timestamp > 100  # 100ms Wiederholungsverzögerung
                 and top_left_corner[0] <= mouse_pos[0] <= bottom_right_corner[0]
                 and top_left_corner[1] <= mouse_pos[1] <= bottom_right_corner[1]
-                and self.wheel_rotation_speed == 0.0  # Rad steht still?
+                and not self.in_progress  # Rad steht still?
             ):
                 closest_bet = self.getClosestBet(mouse_pos)
                 self.addBet(closest_bet)
                 self.last_bet_place_timestamp = now
 
+            if math.dist(mouse_pos, wheel_center) < 15 and not self.in_progress:
+                if sum(self.bets.values()):  # Hat der Nutzer bereits Einsätze platziert?
+                    self.wheel_rotation_speed += 0.004
+
     # Methode zum Bewegen der Spielphysik und Erzeugen des Ergebnisses jedes Durchlaufs
     def processPhysics(self, now: int):
-        self.wheel_rotation_angle += self.wheel_rotation_speed
-        self.wheel_rotation_speed /= 1.006  # Rad verlangsamt sich durch Reibung
+        dt = now - self.prev_timestamp
+        self.prev_timestamp = now
 
-        if self.wheel_rotation_speed != 0 and self.wheel_rotation_speed < 0.002:  # Ist das Rad zum Stillstand gekommen?
-            self.wheel_rotation_speed = 0.0
+        self.wheel_rotation_angle += self.wheel_rotation_speed
+        self.wheel_rotation_speed /= 1.005  # Rad verlangsamt sich durch Reibung
+
+        if self.in_progress and self.ball_on_number != -1 and self.wheel_rotation_speed < 0.006:  # Ist das Rad zum Stillstand gekommen?
+            self.in_progress = False
             self.processBets(now)
 
         self.ball_rotation_angle += self.ball_rotation_speed
-        self.ball_rotation_speed /= 1.01  # Kugel verlangsamt sich durch Reibung
+        if self.ball_distance > 80.0:
+            self.ball_rotation_speed /= 1.01  # Kugel verlangsamt sich durch Reibung
+        elif self.ball_on_number == -1:
+            self.ball_rotation_speed += (self.wheel_rotation_speed - self.ball_rotation_speed) * 0.06
 
         if self.ball_rotation_speed != 0:
-            if self.ball_distance <= 76.0:  # Warten, bis die Kugel in das Rad fällt
+            if self.ball_distance > 75.0:
+                self.ball_distance -= 0.25
+            if self.ball_distance <= 80.0:  # Warten, bis die Kugel in das Rad fällt
                 # Kugel maximal 3-mal abprallen lassen
                 if (
                     now - self.ball_bounce_timestamp > random.randrange(200, 400)
                     and self.ball_num_bounces < 3
                     and abs(self.ball_rotation_speed - self.wheel_rotation_speed) > 0.01
                 ):
-                    self.ball_rotation_speed = -(self.ball_rotation_speed - self.wheel_rotation_speed) * 0.85  # Kugel abprallen lassen
+                    self.ball_rotation_speed = -(self.ball_rotation_speed - self.wheel_rotation_speed) # Kugel abprallen lassen
                     self.ball_num_bounces += 1
                     self.ball_bounce_sounds[self.ball_num_bounces].play()
                     self.ball_bounce_timestamp = now
@@ -503,12 +542,10 @@ class Roulette:
                         closest_num = num
 
                 delta_angle = self.angleDifference(self.ball_rotation_angle, self.wheel_rotation_angle - math.pi / 2 + (angles[closest_num] * math.pi / 180) )
-                if delta_angle < 0.005:  # Ist die Kugel nahe genug am Zentrum der Zahl?
+                if delta_angle < 0.005 and self.ball_distance < 77.0:  # Ist die Kugel nahe genug am Zentrum der Zahl?
                     self.ball_on_number = closest_num
-                    self.ball_rotation_speed = 0
+                    self.ball_rotation_speed = 0.0
                     self.ball_land_sound.play()
-            else:
-                self.ball_distance -= 0.25
 
         # Wenn die Kugel auf einer Zahl gelandet ist, bleibt sie daran haften, bis das Rad stoppt
         if self.ball_on_number != -1:
@@ -522,13 +559,11 @@ class Roulette:
         self.blitRotateCenter(self.screen, self.wheel_png, [sum(x) for x in zip(wheel_center, (-100, -100))], self.wheel_rotation_angle)
 
         # Koordinaten der Kugel aus ihren Polarkoordinaten berechnen und rendern
-        self.screen.blit(
-            self.ball_png,
-            [
-                wheel_center[0] - 7 + self.ball_distance * math.cos(self.ball_rotation_angle),
-                wheel_center[1] - 7 + self.ball_distance * math.sin(self.ball_rotation_angle),
-            ],
-        )
+        virtual = pygame.Surface((1000 * 3, 360 * 3), pygame.SRCALPHA)
+        x = (wheel_center[0] - 7 + self.ball_distance * math.cos(self.ball_rotation_angle)) * 3
+        y = (wheel_center[1] - 7 + self.ball_distance * math.sin(self.ball_rotation_angle)) * 3
+        virtual.blit(pygame.transform.smoothscale(self.ball_png, (self.ball_png.get_width() * 3, self.ball_png.get_height() * 3)), (x, y))
+        self.screen.blit(pygame.transform.smoothscale(virtual, (1000, 360)), (0, 0))
 
         # Einsatzmünzen und ggf. Text darüber rendern
         for bet, amount in self.bets.items():
@@ -575,9 +610,8 @@ class Roulette:
 
         # Spezielle bildschirm, wenn der Nutzer während des Drehens versucht zu beenden
         if now - self.quit_timestamp < 500:
-            image = self.quit_during_game_screen_png.copy()
-            image.set_alpha(255 - int((now - self.quit_timestamp) * 255 / 500))
-            self.screen.blit(image, [0, 0])
+            self.quit_during_game_screen_png.set_alpha(255 - int((now - self.quit_timestamp) * 255 / 500))
+            self.screen.blit(self.quit_during_game_screen_png, [0, 0])
 
     async def gameloop(self):
         while True:
@@ -612,6 +646,8 @@ class Roulette:
                     if (now - self.game_over_timestamp) > 4000:
                         pygame.quit()
                         raise SystemExit
+                    
+            self.screen.blit(self.quit_button_png, [10, 10])
 
             pygame.display.update()  # Aktualisiert den Fensterinhalt
 
