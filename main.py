@@ -153,8 +153,6 @@ class Roulette:
     bank_account = 1000  # Geldbetrag des Spielers
     highscore = 0  # Höchststand; wird nur beim freiwilligen Beenden gespeichert und zur Hälfte als Startkapital beim nächsten Start verwendet
 
-    slowspeed = False
-
     _xp = 0  # Aktuelle XP
     _xp_interpolate = 0  # Auf der XP-Leiste angezeigte XP; wird für die Animation bei XP-Gewinn verwendet
 
@@ -201,6 +199,7 @@ class Roulette:
             random.choice(["assets/sounds/ambient.mp3", "assets/sounds/ambient2.mp3"])
         )
         pygame.mixer.music.play()
+        pygame.mixer.music.queue("assets/sounds/ambient.mp3", loops=-1)
         pygame.mixer.music.set_volume(0.2)
 
         self.place_bet_sounds = [
@@ -428,9 +427,6 @@ class Roulette:
             if event.type == pygame.QUIT:
                 self.quit(now)
 
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_s:
-                self.slowspeed ^= 1
-
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if math.dist(event.pos, [30, 30]) < 20:
                     self.quit(now)
@@ -618,8 +614,6 @@ class Roulette:
             now = pygame.time.get_ticks()  # Millisekunden seit Spielstart
 
             dt = (now - self.prev_timestamp) / 25.0
-            if self.slowspeed:
-                dt /= 4
             self.prev_timestamp = now
 
             self.processEvents(now, dt)
