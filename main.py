@@ -299,7 +299,7 @@ class Roulette:
     # Statische Methode zur Berechnung der Differenz zwischen zwei Winkeln in Radiant
     @staticmethod
     def angleDifference(alpha: float, beta: float):
-        return abs(Roulette.simplifyAngle(alpha) - Roulette.simplifyAngle(beta))
+        return Roulette.simplifyAngle(alpha) - Roulette.simplifyAngle(beta)
 
     # Statische Methode zur Interpolation zwischen zwei Farben a und b;
     # t=0 ergibt a, t=1 ergibt b
@@ -482,7 +482,7 @@ class Roulette:
                 self.addBet(closest_bet)
                 self.last_bet_place_timestamp = now
 
-            if math.dist(mouse_pos, wheel_center) < 15 and not self.in_progress:
+            if math.dist(mouse_pos, wheel_center) < 15 and self.ball_distance == 135 and not self.in_progress:
                 if sum(self.bets.values()):  # Hat der Nutzer bereits Einsätze platziert?
                     self.wheel_rotation_speed += 0.004
 
@@ -499,8 +499,10 @@ class Roulette:
             self.processBets(now)
 
         self.ball_rotation_angle += self.ball_rotation_speed
-        if self.ball_distance > 80.0:
+        if self.ball_distance > 100.0:
             self.ball_rotation_speed /= 1.01  # Kugel verlangsamt sich durch Reibung
+        elif self.ball_distance > 80.0:
+            self.ball_rotation_speed += (self.wheel_rotation_speed - self.ball_rotation_speed) * 0.002
         elif self.ball_on_number == -1:
             self.ball_rotation_speed += (self.wheel_rotation_speed - self.ball_rotation_speed) * 0.06
 
@@ -511,16 +513,16 @@ class Roulette:
                 # Kugel maximal 3-mal abprallen lassen
                 if (
                     now - self.ball_bounce_timestamp > random.randrange(200, 400)
-                    and self.ball_num_bounces < 3
+                    and self.ball_num_bounces < 4
                     and abs(self.ball_rotation_speed - self.wheel_rotation_speed) > 0.01
                 ):
                     self.ball_rotation_speed = -(self.ball_rotation_speed - self.wheel_rotation_speed) # Kugel abprallen lassen
-                    self.ball_num_bounces += 1
                     self.ball_bounce_sounds[self.ball_num_bounces].play()
+                    self.ball_num_bounces += 1
                     self.ball_bounce_timestamp = now
                     return
 
-                if abs(self.ball_rotation_speed - self.wheel_rotation_speed) > 0.01:  # Kugel erst landen lassen, wenn sie langsam genug ist
+                if abs(self.ball_rotation_speed - self.wheel_rotation_speed) > 0.04:  # Kugel erst landen lassen, wenn sie langsam genug ist
                     return
 
                 # Koordinaten der Kugel berechnen
@@ -542,10 +544,12 @@ class Roulette:
                         closest_num = num
 
                 delta_angle = self.angleDifference(self.ball_rotation_angle, self.wheel_rotation_angle - math.pi / 2 + (angles[closest_num] * math.pi / 180) )
-                if delta_angle < 0.005 and self.ball_distance < 77.0:  # Ist die Kugel nahe genug am Zentrum der Zahl?
+                if abs(delta_angle) < 0.003 and self.ball_distance < 77.0:  # Ist die Kugel nahe genug am Zentrum der Zahl?
                     self.ball_on_number = closest_num
                     self.ball_rotation_speed = 0.0
                     self.ball_land_sound.play()
+                elif abs(delta_angle) < 0.01:
+                    self.ball_rotation_speed -= delta_angle * 0.04
 
         # Wenn die Kugel auf einer Zahl gelandet ist, bleibt sie daran haften, bis das Rad stoppt
         if self.ball_on_number != -1:
