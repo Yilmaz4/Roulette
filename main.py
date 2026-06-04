@@ -153,6 +153,8 @@ class Roulette:
     bank_account = 1000  # Geldbetrag des Spielers
     highscore = 0  # Höchststand; wird nur beim freiwilligen Beenden gespeichert und zur Hälfte als Startkapital beim nächsten Start verwendet
 
+    slowspeed = False
+
     _xp = 0  # Aktuelle XP
     _xp_interpolate = 0  # Auf der XP-Leiste angezeigte XP; wird für die Animation bei XP-Gewinn verwendet
 
@@ -426,6 +428,9 @@ class Roulette:
             if event.type == pygame.QUIT:
                 self.quit(now)
 
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_s:
+                self.slowspeed ^= 1
+
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if math.dist(event.pos, [30, 30]) < 20:
                     self.quit(now)
@@ -481,14 +486,14 @@ class Roulette:
 
             if math.dist(mouse_pos, wheel_center) < 15 and self.ball_distance == 135 and not self.in_progress:
                 if sum(self.bets.values()):  # Hat der Nutzer bereits Einsätze platziert?
-                    self.wheel_rotation_speed += 0.004 * dt
+                    self.wheel_rotation_speed += 0.006 * dt
 
     # Methode zum Bewegen der Spielphysik und Erzeugen des Ergebnisses jedes Durchlaufs
     def processPhysics(self, now: int, dt: float):
         self.wheel_rotation_angle += self.wheel_rotation_speed * dt
         self.wheel_rotation_speed *= math.pow(0.99502, dt)  # Rad verlangsamt sich durch Reibung
 
-        if self.in_progress and self.ball_on_number != -1 and self.wheel_rotation_speed < 0.006:  # Ist das Rad zum Stillstand gekommen?
+        if self.in_progress and self.ball_on_number != -1 and self.wheel_rotation_speed < 0.02:  # Ist das Rad zum Stillstand gekommen?
             self.in_progress = False
             self.processBets(now)
 
@@ -504,19 +509,16 @@ class Roulette:
             if self.ball_distance > 75.0:
                 self.ball_distance -= 0.25 * dt
             if self.ball_distance <= 80.0:  # Warten, bis die Kugel in das Rad fällt
+                dv = abs(self.ball_rotation_speed - self.wheel_rotation_speed)
                 # Kugel maximal 3-mal abprallen lassen
-                if (
-                    now - self.ball_bounce_timestamp > random.randrange(200, 400)
-                    and self.ball_num_bounces < 4
-                    and abs(self.ball_rotation_speed - self.wheel_rotation_speed) > 0.01
-                ):
+                if now - self.ball_bounce_timestamp > min(400, random.uniform(dv * 4e3, dv * 8e3)) / dt and self.ball_num_bounces < 4 and dv > 0.03:
                     self.ball_rotation_speed = -(self.ball_rotation_speed - self.wheel_rotation_speed) # Kugel abprallen lassen
                     self.ball_bounce_sounds[self.ball_num_bounces].play()
                     self.ball_num_bounces += 1
                     self.ball_bounce_timestamp = now
                     return
 
-                if abs(self.ball_rotation_speed - self.wheel_rotation_speed) > 0.04:  # Kugel erst landen lassen, wenn sie langsam genug ist
+                if dv > 0.03:  # Kugel erst landen lassen, wenn sie langsam genug ist
                     return
 
                 # Koordinaten der Kugel berechnen
@@ -538,12 +540,12 @@ class Roulette:
                         closest_num = num
 
                 delta_angle = self.angleDifference(self.ball_rotation_angle, self.wheel_rotation_angle - math.pi / 2 + (angles[closest_num] * math.pi / 180) )
-                if abs(delta_angle) < 0.003 and self.ball_distance < 77.0:  # Ist die Kugel nahe genug am Zentrum der Zahl?
+                if abs(delta_angle) < 0.002 and self.ball_distance < 77.0:  # Ist die Kugel nahe genug am Zentrum der Zahl?
                     self.ball_on_number = closest_num
                     self.ball_rotation_speed = 0.0
                     self.ball_land_sound.play()
                 elif abs(delta_angle) < 0.01:
-                    self.ball_rotation_speed -= delta_angle * 0.04 * dt
+                    self.ball_rotation_speed -= delta_angle * 0.1 * dt
 
         # Wenn die Kugel auf einer Zahl gelandet ist, bleibt sie daran haften, bis das Rad stoppt
         if self.ball_on_number != -1:
@@ -616,6 +618,8 @@ class Roulette:
             now = pygame.time.get_ticks()  # Millisekunden seit Spielstart
 
             dt = (now - self.prev_timestamp) / 25.0
+            if self.slowspeed:
+                dt /= 4
             self.prev_timestamp = now
 
             self.processEvents(now, dt)
